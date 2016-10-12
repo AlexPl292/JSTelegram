@@ -20,8 +20,10 @@ BASE_URL = "http://localhost:8080/JavaSchool/rest/"
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 # ----------------- commands
+
+
 def start(bot, update):
-    bot.sendMessage(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
+    bot.sendMessage(chat_id=update.message.chat_id, text="I'm a bot!\nMaybe you want to /login?")
 
 
 def tariffs(bot, update):
