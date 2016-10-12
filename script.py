@@ -29,8 +29,6 @@ def tariffs(bot, update):
         text += "- " + x["name"]+"\n"
     bot.sendMessage(chat_id=update.message.chat_id, text="Available tariffs:\n"+text)
 
-# ----------------- commands end
-
 
 def login(bot, update):
     user = get_user(update)
@@ -39,6 +37,20 @@ def login(bot, update):
         return
     bot.sendMessage(chat_id=update.message.chat_id, text="Please send email and password")
     dispatcher.add_handler(MessageHandler([Filters.text], _try_login))
+
+
+def logout(bot, update):
+    user = get_user(update)
+    if not user:
+        bot.sendMessage(chat_id=update.message.chat_id, text="You are not authorized")
+        return
+
+    user_search = Query()
+    db.remove(user_search.chat_id == update.message.chat_id)
+    bot.sendMessage(chat_id=update.message.chat_id, text="Success!")
+
+# ----------------- commands end
+
 
 
 def _try_login(bot, update):
@@ -93,10 +105,10 @@ def signal_stop():
 
 
 def set_up():
-    start_handler = CommandHandler('start', start)
-    start_handler = CommandHandler('login', login)
-    dispatcher.add_handler(start_handler)
+    dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(CommandHandler('tariffs', tariffs))
+    dispatcher.add_handler(CommandHandler('login', login))
+    dispatcher.add_handler(CommandHandler('logout', logout))
     updater.start_polling()
     updater.idle()
 
