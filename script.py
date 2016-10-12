@@ -18,23 +18,26 @@ DEV_EMAIL = "AlexPl292@gmail.com"
 BASE_URL = "http://localhost:8080/JavaSchool/rest/"
 
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+logging.basicConfig(filename="log/JSTelegram.log", format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 # ----------------- commands
 
 
 def start(bot, update):
     bot.sendMessage(chat_id=update.message.chat_id, text="I'm a bot!\nMaybe you want to /login?")
+    logging.info("/start command")
 
 
 def tariffs(bot, update):
     user = get_user(update)
     if not user:
         bot.sendMessage(chat_id=update.message.chat_id, text="You are not authorized")
+        logging.error("/tariffs command fail. Not authorized. chat_id:"+str(update.message.chat_id))
         return
 
     response = request_get("tariffs", user, bot, update)
     if not response:
+        logging.error("/tariffs command fail. Bad response:"+str(response))
         return
 
     keyboard = []
@@ -44,16 +47,19 @@ def tariffs(bot, update):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     update.message.reply_text('Available tariffs:', reply_markup=reply_markup)
+    logging.info("/tariffs command success.")
 
 
 def options(bot, update):
     user = get_user(update)
     if not user:
         bot.sendMessage(chat_id=update.message.chat_id, text="You are not authorized")
+        logging.error("/options command fail. Not authorized. chat_id:"+str(update.message.chat_id))
         return
 
     response = request_get("options", user, bot, update)
     if not response:
+        logging.error("/options command fail. Bad response:"+str(response))
         return
 
     keyboard = []
@@ -63,16 +69,20 @@ def options(bot, update):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     update.message.reply_text('Available option:', reply_markup=reply_markup)
+    logging.info("/options command success.")
 
 
 def login(bot, update, args):
     user = get_user(update)
     if user:
         bot.sendMessage(chat_id=update.message.chat_id, text="You are logged in")
+        logging.error("/login command fail. Already logged in. Chat_id:"+str(update.message.chat_id))
         return
 
     if len(args) != 2:
+        logging.error("/login command fail. Wrong count of args")
         bot.sendMessage(chat_id=update.message.chat_id, text="Please send email and password")
+        return
 
     username, password = args
 
@@ -80,16 +90,19 @@ def login(bot, update, args):
         r = requests.get(BASE_URL + "users/me", auth=(username, password))
     except ConnectionError:
         bot.sendMessage(chat_id=update.message.chat_id, text="Service is not available")
+        logging.error("/login command fail. ConnectionError exception")
         return
 
     if r.status_code != requests.codes.ok:
         bot.sendMessage(chat_id=update.message.chat_id, text="Wrong email or password.\nTry again")
+        logging.error("/login command fail. Bad response status:" + str(r))
         return
 
     try:
         user = r.json()
     except ValueError:
         bot.sendMessage(chat_id=update.message.chat_id, text="Something is wrong. Try again or write to " + DEV_EMAIL)
+        logging.error("/login command fail. Bad response. Cannot convert to JSON:" + str(user.text))
         return
 
     access = False
@@ -102,6 +115,7 @@ def login(bot, update, args):
 
     if not access:
         bot.sendMessage(chat_id=update.message.chat_id, text="Sorry, this bot available only for customers")
+        logging.error("/login command fail. Wrong access rights")
         return
 
     db.insert({'chat_id': update.message.chat_id, 'user': {'id': user['id'],
@@ -111,43 +125,51 @@ def login(bot, update, args):
                                                            'password': password}})
     bot.sendMessage(chat_id=update.message.chat_id, text="Hello, " + user['name']
                                                          + "!\nTry to get available tariffs or something else")
+    logging.info("/login command success.")
 
 
 def logout(bot, update):
     user = get_user(update)
     if not user:
         bot.sendMessage(chat_id=update.message.chat_id, text="You are not authorized")
+        logging.error("/logout command fail. Not logged in")
         return
 
     user_search = Query()
     db.remove(user_search.chat_id == update.message.chat_id)
     bot.sendMessage(chat_id=update.message.chat_id, text="Success!")
+    logging.info("/logout command success.")
 
 
 def my_contracts(bot, update):
     user = get_user(update)
     if not user:
         bot.sendmessage(chat_id=update.message.chat_id, text="you are not authorized")
+        logging.error("/mycontracts command fail. Not authorized. chat_id:"+str(update.message.chat_id))
         return
 
     response = request_get("customers/" + str(user['id']), user, bot, update)
     if not response:
+        logging.error("/mycontracts command fail. Bad response:"+str(response))
         return
 
     text = ""
     for contract in response.json()['contracts']:
         text += " " + contract["number"] + "\n"
     bot.sendMessage(chat_id=update.message.chat_id, text="Your contracts:\n" + text)
+    logging.info("/mycontracts command success.")
 
 
 def change_password(bot, update, args):
     user = get_user(update)
     if not user:
         bot.sendmessage(chat_id=update.message.chat_id, text="you are not authorized")
+        logging.error("/newpassword command fail. Not authorized. chat_id:"+str(update.message.chat_id))
         return
 
     if len(args) != 1:
         bot.sendmessage(chat_id=update.message.chat_id, text="Input new pasword")
+        logging.error("/newpassword command fail. Wrong count of args")
         return
 
     new_password = args[0]
@@ -155,11 +177,13 @@ def change_password(bot, update, args):
     if not re.match("^[A-Za-z0-9_-]*$", new_password):
         bot.sendMessage(chat_id=update.message.chat_id, text="New password contains wrong characters\n"+
                                                              "Try again")
+        logging.error("/newpassword command fail. Bad new password")
         return
 
     if len(new_password) < 8:
         bot.sendMessage(chat_id=update.message.chat_id, text="New password must be at least eight characters\n"+
                                                              "Try again")
+        logging.error("/newpassword command fail. Bad new password")
         return
 
     try:
@@ -167,21 +191,25 @@ def change_password(bot, update, args):
         r = requests.put(BASE_URL + "users/"+str(user['id']), auth=(user["email"], user["password"]), data=data)
     except ConnectionError:
         bot.sendMessage(chat_id=update.message.chat_id, text="Service is not available")
+        logging.error("/newpassword command fail. ConnectionError exception")
         return
 
     if r.status_code != requests.codes.ok:
         bot.sendMessage(chat_id=update.message.chat_id, text="Something is wrong\npassword is not changed")
+        logging.error("/newpassword command fail. Bad response status:" + str(r))
         return
 
     user_search = Query()
     db.remove(user_search.chat_id == update.message.chat_id)
     bot.sendMessage(chat_id=update.message.chat_id, text="Success! Login again")
+    logging.info("/newpassword command success.")
 
 
 def button(bot, update):
     user = get_user(update)
     if not user:
-        bot.sendmessage(chat_id=update.message.chat_id, text="you are not authorized")
+        logging.error("button methon fail. Not authorized. chat_id:"+str(update.callback_query.message.chat_id))
+        bot.sendmessage(chat_id=update.callback_query.message.chat_id, text="you are not authorized")
         return
 
     query = update.callback_query
@@ -240,6 +268,7 @@ def button(bot, update):
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         update.callback_query.message.reply_text(text, reply_markup=reply_markup)
+    logging.info("button method success.")
 
 # ----------------- commands end
 
@@ -253,10 +282,12 @@ def request_get(url, user, bot, update):
         response = requests.get(BASE_URL + url, auth=(user["email"], user["password"]))
     except ConnectionError:
         bot.sendMessage(chat_id=message.chat_id, text="Service is not available")
+        logging.error("request fail. ConnectionError exception. Url:" + BASE_URL + url)
         return False
 
     if response.status_code != requests.codes.ok:
         bot.sendMessage(chat_id=message.chat_id, text="Something is wrong. Try again or write to " + DEV_EMAIL)
+        logging.error("/newpassword command fail. Bad response status:" + str(response))
         return False
     return response
 
