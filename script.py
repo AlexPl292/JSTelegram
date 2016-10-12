@@ -1,18 +1,24 @@
-from telegram.ext import Updater
-from telegram.ext import CommandHandler
-from telegram.ext import MessageHandler
-from telegram.ext import Filters
+# coding=utf-8
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
 import signal
-import sys
 from tinydb import TinyDB, Query
 import requests
 from requests import ConnectionError
 import re
+import logging
+
+import sys
+
+reload(sys)
+sys.setdefaultencoding('utf8')
 
 DEV_EMAIL = "AlexPl292@gmail.com"
 BASE_URL = "http://localhost:8080/JavaSchool/rest/"
 
 
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    level=logging.INFO)
 # ----------------- commands
 def start(bot, update):
     bot.sendMessage(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
@@ -28,10 +34,13 @@ def tariffs(bot, update):
     if not response:
         return
 
-    text = ""
-    for x in response.json():
-        text += "- " + x["name"] + "\n"
-    bot.sendMessage(chat_id=update.message.chat_id, text="Available tariffs:\n" + text)
+    keyboard = []
+    for tariff in response.json():
+        keyboard.append([InlineKeyboardButton(tariff['name'], callback_data='tariff'+str(tariff['id']))])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.message.reply_text('Available tariffs:', reply_markup=reply_markup)
 
 
 def options(bot, update):
@@ -162,18 +171,43 @@ def change_password(bot, update, args):
     db.remove(user_search.chat_id == update.message.chat_id)
     bot.sendMessage(chat_id=update.message.chat_id, text="Success! Login again")
 
+
+def button(bot, update):
+    user = get_user(update)
+    if not user:
+        bot.sendmessage(chat_id=update.message.chat_id, text="you are not authorized")
+        return
+
+    query = update.callback_query
+
+    if query.data.startswith("tariff"):
+        id = query.data[6:]
+        response = request_get("tariffs/"+id, user, bot, update)
+        if not response:
+            return
+        json = response.json()
+        text = "Tariff: " + json["name"] + "\n"
+        text += "Description: " + json["description"] + "\n"
+        text += "Cost: " + "{0:.2f}".format(json["cost"]) + "₽"
+
+        bot.sendMessage(chat_id=update.callback_query.message.chat_id, text=text)
+
 # ----------------- commands end
 
 
 def request_get(url, user, bot, update):
+    message = update.message
+    if message is None:
+        message = update.callback_query.message
+
     try:
         response = requests.get(BASE_URL + url, auth=(user["email"], user["password"]))
     except ConnectionError:
-        bot.sendMessage(chat_id=update.message.chat_id, text="Service is not available")
+        bot.sendMessage(chat_id=message.chat_id, text="Service is not available")
         return False
 
     if response.status_code != requests.codes.ok:
-        bot.sendMessage(chat_id=update.message.chat_id, text="Something is wrong. Try again or write to " + DEV_EMAIL)
+        bot.sendMessage(chat_id=message.chat_id, text="Something is wrong. Try again or write to " + DEV_EMAIL)
         return False
     return response
 
@@ -182,8 +216,12 @@ def request_get(url, user, bot, update):
 
 
 def get_user(update):
+    message = update.message
+    if message is None:
+        message = update.callback_query.message
     user_search = Query()
-    user = db.search(user_search.chat_id == update.message.chat_id)
+
+    user = db.search(user_search.chat_id == message.chat_id)
     if not user:
         return None
     return user[0]["user"]
@@ -202,6 +240,7 @@ def set_up():
     dispatcher.add_handler(CommandHandler('logout', logout))
     dispatcher.add_handler(CommandHandler('mycontracts', my_contracts))
     dispatcher.add_handler(CommandHandler('newpassword', change_password, pass_args=True))
+    dispatcher.add_handler(CallbackQueryHandler(button))
     updater.start_polling()
     updater.idle()
 
