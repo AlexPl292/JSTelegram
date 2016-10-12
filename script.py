@@ -114,7 +114,8 @@ def set_up():
 
 
 if __name__ == "__main__":
-    updater = Updater(token='***REMOVED***')
+    token = open('token').read()
+    updater = Updater(token=token)
     dispatcher = updater.dispatcher
     signal.signal(signal.SIGINT, signal_stop)
 

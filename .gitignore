@@ -147,3 +147,4 @@ ENV/
 
 .idea
 db.json
+token
