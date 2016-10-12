@@ -53,10 +53,13 @@ def options(bot, update):
     if not response:
         return
 
-    text = ""
-    for x in response.json():
-        text += "- " + x["name"] + "\n"
-    bot.sendMessage(chat_id=update.message.chat_id, text="Available options:\n" + text)
+    keyboard = []
+    for option in response.json():
+        keyboard.append([InlineKeyboardButton(option['name'], callback_data='option'+str(option['id']))])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.message.reply_text('Available option:', reply_markup=reply_markup)
 
 
 def login(bot, update, args):
@@ -188,9 +191,52 @@ def button(bot, update):
         json = response.json()
         text = "Tariff: " + json["name"] + "\n"
         text += "Description: " + json["description"] + "\n"
-        text += "Cost: " + "{0:.2f}".format(json["cost"]) + "₽"
+        text += "Cost: " + "{0:.2f}".format(json["cost"]) + "₽" + "\n"
+        text += "Available options:"
 
-        bot.sendMessage(chat_id=update.callback_query.message.chat_id, text=text)
+        keyboard = []
+        for option in json['possibleOptions']:
+            keyboard.append([InlineKeyboardButton(option['name'], callback_data='option'+str(option['id']))])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        update.callback_query.message.reply_text(text, reply_markup=reply_markup)
+
+    elif query.data.startswith("option"):
+        id = query.data[6:]
+        response = request_get("options/"+id, user, bot, update)
+        if not response:
+            return
+        json = response.json()
+        text = "Option: " + json["name"] + "\n"
+        text += "Description: " + json["description"] + "\n"
+        text += "Cost: " + "{0:.2f}".format(json["cost"]) + "₽" + "\n"
+        text += "Connection cost: " + "{0:.2f}".format(json["connectCost"]) + "₽" + "\n"
+
+        if json['requiredFrom']:
+            text += "Required:" + "\n"
+            for opt in json['requiredFrom']:
+                text += "  - "+opt['name'] + "\n"
+
+        if json['requiredMe']:
+            text += "Requires this options:" + "\n"
+            for opt in json['requiredMe']:
+                text += "  - "+opt['name'] + "\n"
+
+        if json['forbiddenWith']:
+            text += "Incompatible with:" + "\n"
+            for opt in json['forbiddenWith']:
+                text += "  - "+opt['name'] + "\n"
+
+        text += "Available tariffs:"
+
+        keyboard = []
+        for tariff in json['possibleTariffsOfOption']:
+            keyboard.append([InlineKeyboardButton(tariff['name'], callback_data='tariff'+str(tariff['id']))])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        update.callback_query.message.reply_text(text, reply_markup=reply_markup)
 
 # ----------------- commands end
 
