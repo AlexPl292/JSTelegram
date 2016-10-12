@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # coding=utf-8
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
