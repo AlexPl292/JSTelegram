@@ -7,7 +7,6 @@ import sys
 from tinydb import TinyDB, Query
 import requests
 
-
 DEV_EMAIL = "AlexPl292@gmail.com"
 BASE_URL = "http://localhost:8080/JavaSchool/rest/"
 
@@ -23,11 +22,24 @@ def tariffs(bot, update):
         bot.sendMessage(chat_id=update.message.chat_id, text="You are not authorized")
         return
 
-    response = requests.get(BASE_URL+"tariffs", auth=(user["email"], user["password"]))
+    response = requests.get(BASE_URL + "tariffs", auth=(user["email"], user["password"]))
     text = ""
     for x in response.json():
-        text += "- " + x["name"]+"\n"
-    bot.sendMessage(chat_id=update.message.chat_id, text="Available tariffs:\n"+text)
+        text += "- " + x["name"] + "\n"
+    bot.sendMessage(chat_id=update.message.chat_id, text="Available tariffs:\n" + text)
+
+
+def options(bot, update):
+    user = get_user(update)
+    if not user:
+        bot.sendMessage(chat_id=update.message.chat_id, text="You are not authorized")
+        return
+
+    response = requests.get(BASE_URL + "options", auth=(user["email"], user["password"]))
+    text = ""
+    for x in response.json():
+        text += "- " + x["name"] + "\n"
+    bot.sendMessage(chat_id=update.message.chat_id, text="Available options:\n" + text)
 
 
 def login(bot, update):
@@ -49,8 +61,8 @@ def logout(bot, update):
     db.remove(user_search.chat_id == update.message.chat_id)
     bot.sendMessage(chat_id=update.message.chat_id, text="Success!")
 
-# ----------------- commands end
 
+# ----------------- commands end
 
 
 def _try_login(bot, update):
@@ -61,23 +73,23 @@ def _try_login(bot, update):
         dispatcher.remove_handler([Filters.text])
         return
 
-    r = requests.get(BASE_URL+"users/role", auth=(username, password))
+    r = requests.get(BASE_URL + "users/me", auth=(username, password))
 
     if r.status_code != requests.codes.ok:
         bot.sendMessage(chat_id=update.message.chat_id, text="Wrong email or password.\nTry again")
         return
 
     try:
-        roles = r.json()
+        user = r.json()
     except ValueError:
         bot.sendMessage(chat_id=update.message.chat_id, text="Something is wrong. Try again or write to " + DEV_EMAIL)
         return
 
     access = False
-    for role in roles:
-        if role['authority'] == "ROLE_USER":
+    for role in user['roles']:
+        if role == "ROLE_USER":
             access = True
-        elif role['authority'] == "ROLE_ADMIN":
+        elif role == "ROLE_ADMIN":
             access = False
             break
 
@@ -86,8 +98,13 @@ def _try_login(bot, update):
         dispatcher.remove_handler([Filters.text])
         return
 
-    db.insert({'chat_id':update.message.chat_id, 'user':{'email':username, 'password':password}})
-    bot.sendMessage(chat_id=update.message.chat_id, text="Success!\nTry to get available tariffs or something else")
+    db.insert({'chat_id': update.message.chat_id, 'user': {'id': user['id'],
+                                                           'name': user['name'],
+                                                           'surname': user['surname'],
+                                                           'email': username,
+                                                           'password': password}})
+    bot.sendMessage(chat_id=update.message.chat_id, text="Hello, " + user['name']
+                                                         + "!\nTry to get available tariffs or something else")
     dispatcher.remove_handler([Filters.text])
 
 
@@ -107,6 +124,7 @@ def signal_stop():
 def set_up():
     dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(CommandHandler('tariffs', tariffs))
+    dispatcher.add_handler(CommandHandler('options', options))
     dispatcher.add_handler(CommandHandler('login', login))
     dispatcher.add_handler(CommandHandler('logout', logout))
     updater.start_polling()
