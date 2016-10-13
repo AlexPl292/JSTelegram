@@ -150,7 +150,7 @@ def logout(bot, update):
 def my_contracts(bot, update):
     user = get_user(update)
     if not user:
-        bot.sendmessage(chat_id=update.message.chat_id, text="you are not authorized")
+        bot.sendMessage(chat_id=update.message.chat_id, text="you are not authorized")
         logging.error("/mycontracts command fail. Not authorized. chat_id:"+str(update.message.chat_id))
         return
 
@@ -166,56 +166,63 @@ def my_contracts(bot, update):
     logging.info("/mycontracts command success.")
 
 
-def change_password(bot, update, args):
+def change_password_enter(bot, update):
     user = get_user(update)
     if not user:
-        bot.sendmessage(chat_id=update.message.chat_id, text="you are not authorized")
+        bot.sendMessage(chat_id=update.message.chat_id, text="you are not authorized")
         logging.error("/newpassword command fail. Not authorized. chat_id:"+str(update.message.chat_id))
-        return
+        return ConversationHandler.END
 
-    if len(args) != 1:
-        bot.sendmessage(chat_id=update.message.chat_id, text="Input new pasword")
-        logging.error("/newpassword command fail. Wrong count of args")
-        return
+    bot.sendMessage(chat_id=update.message.chat_id, text="Enter new password")
+    return CHANGEPASS
 
-    new_password = args[0]
 
-    if not re.match("^[A-Za-z0-9_-]*$", new_password):
+def change_password(bot, update):
+    user = get_user(update)
+    if not user:
+        bot.sendMessage(chat_id=update.message.chat_id, text="you are not authorized")
+        logging.error("/newpassword command fail. Not authorized. chat_id:"+str(update.message.chat_id))
+        return ConversationHandler.END
+
+    new = update.message.text
+
+    if not re.match("^[A-Za-z0-9_-]*$", new):
         bot.sendMessage(chat_id=update.message.chat_id, text="New password contains wrong characters\n"+
                                                              "Try again")
         logging.error("/newpassword command fail. Bad new password")
-        return
+        return CHANGEPASS
 
-    if len(new_password) < 8:
+    if len(new) < 8:
         bot.sendMessage(chat_id=update.message.chat_id, text="New password must be at least eight characters\n"+
                                                              "Try again")
         logging.error("/newpassword command fail. Bad new password")
-        return
+        return CHANGEPASS
 
     try:
-        data = {'oldPassword': user['password'], "newPassword": new_password, "newPasswordRepeat": new_password}
+        data = {'oldPassword': user['password'], "newPassword": new, "newPasswordRepeat": new}
         r = requests.put(BASE_URL + "users/"+str(user['id']), auth=(user["email"], user["password"]), data=data)
     except ConnectionError:
         bot.sendMessage(chat_id=update.message.chat_id, text="Service is not available")
         logging.error("/newpassword command fail. ConnectionError exception")
-        return
+        return ConversationHandler.END
 
     if r.status_code != requests.codes.ok:
         bot.sendMessage(chat_id=update.message.chat_id, text="Something is wrong\npassword is not changed")
         logging.error("/newpassword command fail. Bad response status:" + str(r))
-        return
+        return ConversationHandler.END
 
     user_search = Query()
     db.remove(user_search.chat_id == update.message.chat_id)
     bot.sendMessage(chat_id=update.message.chat_id, text="Success! Login again")
     logging.info("/newpassword command success.")
+    return ConversationHandler.END
 
 
 def button(bot, update):
     user = get_user(update)
     if not user:
         logging.error("button methon fail. Not authorized. chat_id:"+str(update.callback_query.message.chat_id))
-        bot.sendmessage(chat_id=update.callback_query.message.chat_id, text="you are not authorized")
+        bot.sendMessage(chat_id=update.callback_query.message.chat_id, text="you are not authorized")
         return
 
     query = update.callback_query
@@ -328,7 +335,6 @@ def set_up():
     dispatcher.add_handler(CommandHandler('options', options))
     dispatcher.add_handler(CommandHandler('logout', logout))
     dispatcher.add_handler(CommandHandler('mycontracts', my_contracts))
-    dispatcher.add_handler(CommandHandler('newpassword', change_password, pass_args=True))
     dispatcher.add_handler(CallbackQueryHandler(button))
 
     login_handler = ConversationHandler(
@@ -337,6 +343,13 @@ def set_up():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
     dispatcher.add_handler(login_handler)
+
+    change_password_handler = ConversationHandler(
+        entry_points=[CommandHandler('newpassword', change_password_enter)],
+        states={CHANGEPASS: [MessageHandler([Filters.text], change_password)]},
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+    dispatcher.add_handler(change_password_handler)
     updater.start_polling()
     updater.idle()
 
