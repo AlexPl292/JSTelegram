@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, Filters
 import signal
 from tinydb import TinyDB, Query
 import requests
@@ -16,6 +16,8 @@ sys.setdefaultencoding('utf8')
 
 DEV_EMAIL = "AlexPl292@gmail.com"
 BASE_URL = "http://localhost:8080/JavaSchool/rest/"
+
+LOGIN, CHANGEPASS = range(2)
 
 
 logging.basicConfig(filename="log/JSTelegram.log", format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -72,38 +74,41 @@ def options(bot, update):
     logging.info("/options command success.")
 
 
-def login(bot, update, args):
+def login_enter(bot, update):
     user = get_user(update)
     if user:
         bot.sendMessage(chat_id=update.message.chat_id, text="You are logged in")
         logging.error("/login command fail. Already logged in. Chat_id:"+str(update.message.chat_id))
-        return
+        return ConversationHandler.END
+    bot.sendMessage(chat_id=update.message.chat_id, text="Enter email and password")
+    return LOGIN
 
-    if len(args) != 2:
-        logging.error("/login command fail. Wrong count of args")
-        bot.sendMessage(chat_id=update.message.chat_id, text="Please send email and password")
-        return
 
-    username, password = args
+def login(bot, update):
+    try:
+        username, password = update.message.text.split()
+    except ValueError:
+        bot.sendMessage(chat_id=update.message.chat_id, text="Enter email and password")
+        return LOGIN
 
     try:
         r = requests.get(BASE_URL + "users/me", auth=(username, password))
     except ConnectionError:
         bot.sendMessage(chat_id=update.message.chat_id, text="Service is not available")
         logging.error("/login command fail. ConnectionError exception")
-        return
+        return ConversationHandler.END
 
     if r.status_code != requests.codes.ok:
         bot.sendMessage(chat_id=update.message.chat_id, text="Wrong email or password.\nTry again")
         logging.error("/login command fail. Bad response status:" + str(r))
-        return
+        return LOGIN
 
     try:
         user = r.json()
     except ValueError:
         bot.sendMessage(chat_id=update.message.chat_id, text="Something is wrong. Try again or write to " + DEV_EMAIL)
         logging.error("/login command fail. Bad response. Cannot convert to JSON:" + str(user.text))
-        return
+        return ConversationHandler.END
 
     access = False
     for role in user['roles']:
@@ -116,7 +121,7 @@ def login(bot, update, args):
     if not access:
         bot.sendMessage(chat_id=update.message.chat_id, text="Sorry, this bot available only for customers")
         logging.error("/login command fail. Wrong access rights")
-        return
+        return ConversationHandler.END
 
     db.insert({'chat_id': update.message.chat_id, 'user': {'id': user['id'],
                                                            'name': user['name'],
@@ -126,6 +131,7 @@ def login(bot, update, args):
     bot.sendMessage(chat_id=update.message.chat_id, text="Hello, " + user['name']
                                                          + "!\nTry to get available tariffs or something else")
     logging.info("/login command success.")
+    return ConversationHandler.END
 
 
 def logout(bot, update):
@@ -270,6 +276,13 @@ def button(bot, update):
         update.callback_query.message.reply_text(text, reply_markup=reply_markup)
     logging.info("button method success.")
 
+
+def cancel(bot, update):
+    user = update.message.from_user
+    logging.info("User %s canceled the conversation." % user.first_name)
+    update.message.reply_text('Cancelled')
+
+    return ConversationHandler.END
 # ----------------- commands end
 
 
@@ -290,9 +303,6 @@ def request_get(url, user, bot, update):
         logging.error("/newpassword command fail. Bad response status:" + str(response))
         return False
     return response
-
-
-
 
 
 def get_user(update):
@@ -316,11 +326,17 @@ def set_up():
     dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(CommandHandler('tariffs', tariffs))
     dispatcher.add_handler(CommandHandler('options', options))
-    dispatcher.add_handler(CommandHandler('login', login, pass_args=True))
     dispatcher.add_handler(CommandHandler('logout', logout))
     dispatcher.add_handler(CommandHandler('mycontracts', my_contracts))
     dispatcher.add_handler(CommandHandler('newpassword', change_password, pass_args=True))
     dispatcher.add_handler(CallbackQueryHandler(button))
+
+    login_handler = ConversationHandler(
+        entry_points=[CommandHandler('login', login_enter)],
+        states={LOGIN: [MessageHandler([Filters.text], login)]},
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+    dispatcher.add_handler(login_handler)
     updater.start_polling()
     updater.idle()
 
